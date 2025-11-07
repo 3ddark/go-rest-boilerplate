@@ -1,0 +1,20 @@
+{
+  "invalid_request": "Geçersiz istek",
+  "invalid_email": "Geçersiz e-posta formatı",
+  "user_not_found": "Kullanıcı bulunamadı",
+  "database_error": "Veritabanı hatası",
+  "users_retrieved": "Kullanıcılar başarıyla getirildi",
+  "user_created": "Kullanıcı başarıyla oluşturuldu",
+  "user_updated": "Kullanıcı başarıyla güncellendi",
+  "user_deleted": "Kullanıcı başarıyla silindi",
+  "login_successful": "Giriş başarılı",
+  "2fa_required": "2FA gerekli",
+  "invalid_2fa_code": "Geçersiz 2FA kodu",
+  "2fa_setup_initiated": "2FA kurulumu başlatıldı",
+  "2fa_enabled_successfully": "2FA başarıyla etkinleştirildi",
+  "2fa_disabled_successfully": "2FA başarıyla devre dışı bırakıldı",
+  "could_not_setup_2fa": "2FA kurulumu yapılamadı",
+  "could_not_enable_2fa": "2FA etkinleştirilemedi",
+  "could_not_disable_2fa": "2FA devre dışı bırakılamadı",
+  "report_not_found": "Rapor bulunamadı"
+}
