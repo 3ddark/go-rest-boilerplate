@@ -1,0 +1,21 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mailhog:
+        condition: service_started
+    environment:
+      - DB_HOST=db
+      - RABBITMQ_HOST=rabbitmq
+      - REDIS_HOST=redis
+      - MAIL_HOST=mailhog
