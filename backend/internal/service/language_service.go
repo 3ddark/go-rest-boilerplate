@@ -2,10 +2,9 @@ package service
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"time"
 
+	"ths-erp.com/internal/domain"
 	"ths-erp.com/internal/dto"
 	"ths-erp.com/internal/platform/cache"
 )
@@ -16,7 +15,7 @@ const (
 )
 
 type ILanguageService interface {
-	GetActiveLanguages(ctx context.Context, translationLanguageCode string) ([]dto.LanguageResponse, error)
+	GetActiveLanguages(ctx context.Context, translationLanguageCode string, pagination *domain.Pagination) ([]dto.LanguageResponse, *domain.Pagination, error)
 }
 
 type LanguageService struct {
@@ -31,29 +30,26 @@ func NewLanguageService(uowFactory IUnitOfWorkFactory, cache cache.ICache) ILang
 	}
 }
 
-func (s *LanguageService) GetActiveLanguages(ctx context.Context, translationLanguageCode string) ([]dto.LanguageResponse, error) {
-	cacheKey := fmt.Sprintf("%s%s", languagesCacheKeyPrefix, translationLanguageCode)
-
-	// 1. Try to get from cache
-	if cachedData, found := s.cache.Get(cacheKey); found {
-		if data, ok := cachedData.([]byte); ok {
-			var languages []dto.LanguageResponse
-			if err := json.Unmarshal(data, &languages); err == nil {
-				return languages, nil
-			}
-		}
-	}
-
-	// 2. If not in cache, get from database
+func (s *LanguageService) GetActiveLanguages(ctx context.Context, translationLanguageCode string, pagination *domain.Pagination) ([]dto.LanguageResponse, *domain.Pagination, error) {
+	// Sayfalama nedeniyle cache'leme kaldırıldı.
 	uow := s.uowFactory.New(ctx)
 	defer uow.Rollback() // Read-only operation
 
-	languages, err := uow.LanguageRepository().GetActiveLanguages(ctx, translationLanguageCode)
-	if err != nil {
-		return nil, err
+	// SQL Injection'ı önlemek için sıralama kolonunu beyaz listede kontrol et
+	allowedSortBy := map[string]bool{
+		"id":   true,
+		"code": true,
+	}
+	if !allowedSortBy[pagination.SortBy] {
+		pagination.SortBy = "id" // Geçersizse varsayılana dön
+		pagination.SortOrder = "asc"
 	}
 
-	// 3. Map to DTO
+	languages, pagination, err := uow.LanguageRepository().GetActiveLanguages(ctx, translationLanguageCode, pagination)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	response := make([]dto.LanguageResponse, 0, len(languages))
 	for _, lang := range languages {
 		name := lang.Code // Fallback to code if no translation is found
@@ -66,10 +62,5 @@ func (s *LanguageService) GetActiveLanguages(ctx context.Context, translationLan
 		})
 	}
 
-	// 4. Set to cache
-	if data, err := json.Marshal(response); err == nil {
-		s.cache.Set(cacheKey, data, languagesCacheDuration)
-	}
-
-	return response, nil
+	return response, pagination, nil
 }

@@ -8,7 +8,7 @@ import (
 )
 
 type IUnitRepository interface {
-	FindAll(ctx context.Context, languageCode string) ([]domain.Unit, error)
+	FindAll(ctx context.Context, languageCode string, pagination *domain.Pagination) ([]domain.Unit, *domain.Pagination, error)
 	FindByCode(ctx context.Context, code string, languageCode string) (*domain.Unit, error)
 	Create(ctx context.Context, unit domain.Unit) error
 	Update(ctx context.Context, unit domain.Unit) error
@@ -24,13 +24,33 @@ func NewUnitRepository(db *gorm.DB) IUnitRepository {
 	return &unitRepository{db}
 }
 
-func (r *unitRepository) FindAll(ctx context.Context, languageCode string) ([]domain.Unit, error) {
+func (r *unitRepository) FindAll(ctx context.Context, languageCode string, pagination *domain.Pagination) ([]domain.Unit, *domain.Pagination, error) {
 	var units []domain.Unit
-	err := r.db.WithContext(ctx).Preload("Translations", "language_code = ?", languageCode).Find(&units).Error
-	if err != nil {
-		return nil, err
+	var totalRecords int64
+
+	// Toplam kayıt sayısını al
+	if err := r.db.WithContext(ctx).Model(&domain.Unit{}).Count(&totalRecords).Error; err != nil {
+		return nil, nil, err
 	}
-	return units, nil
+
+	pagination.TotalRecords = totalRecords
+	pagination.TotalPages = int(totalRecords) / pagination.GetLimit()
+	if int(totalRecords)%pagination.GetLimit() > 0 {
+		pagination.TotalPages++
+	}
+
+	// Veriyi sayfalama ile al
+	err := r.db.WithContext(ctx).
+		Preload("Translations", "language_code = ?", languageCode).
+		Offset(pagination.GetOffset()).
+		Limit(pagination.GetLimit()).
+		Order(pagination.GetSort()).
+		Find(&units).Error
+
+	if err != nil {
+		return nil, nil, err
+	}
+	return units, pagination, nil
 }
 
 func (r *unitRepository) FindByCode(ctx context.Context, code string, languageCode string) (*domain.Unit, error) {

@@ -1,9 +1,9 @@
-
 package http
 
 import (
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
+	"ths-erp.com/internal/domain"
 	"ths-erp.com/internal/dto"
 	"ths-erp.com/internal/platform/web"
 	"ths-erp.com/internal/service"
@@ -28,12 +28,20 @@ func (h *CountryHandler) GetAll(c *fiber.Ctx) error {
 	// Default language is 'en'
 	lang := c.Query("lang", "en")
 
-	countries, err := h.countryService.GetAll(c.Context(), lang)
+	// Query parametrelerinden sayfalama bilgilerini al
+	pagination := &domain.Pagination{
+		Page:      c.QueryInt("page", 1),
+		PageSize:  c.QueryInt("pageSize", 10),
+		SortBy:    c.Query("sortBy", "id"),
+		SortOrder: c.Query("sortOrder", "asc"),
+	}
+
+	countries, pagination, err := h.countryService.GetAll(c.Context(), lang, pagination)
 	if err != nil {
 		return web.CustomError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
-	return web.Success(c, fiber.StatusOK, countries)
+	return web.Paginated(c, countries, pagination)
 }
 
 // GetByCode handles the GET /api/v1/countries/:code request.
@@ -95,4 +103,3 @@ func (h *CountryHandler) Delete(c *fiber.Ctx) error {
 
 	return web.Success(c, fiber.StatusNoContent, nil, "Country deleted successfully")
 }
-

@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
+	"ths-erp.com/internal/domain"
 )
 
 type Response struct {
@@ -21,10 +22,28 @@ type ErrorDetails struct {
 	Details interface{} `json:"details,omitempty"`
 }
 
+type PaginatedResponse struct {
+	Data       any                `json:"data"`
+	Pagination *domain.Pagination `json:"pagination"`
+}
+
+func Paginated(c *fiber.Ctx, data any, pagination *domain.Pagination) error {
+	return c.Status(fiber.StatusOK).JSON(Response{
+		Success: true,
+		Status:  "success",
+		Data: PaginatedResponse{
+			Data:       data,
+			Pagination: pagination,
+		},
+	})
+}
+
 func Success(c *fiber.Ctx, statusCode int, data interface{}, messages ...string) error {
 	if len(messages) == 0 {
 		messages = []string{"Request processed successfully."}
 	}
+	// ... (rest of the file)
+
 	return c.Status(statusCode).JSON(Response{
 		Success:  true,
 		Status:   "success",

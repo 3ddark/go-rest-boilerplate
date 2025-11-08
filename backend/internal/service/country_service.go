@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"time"
 
 	"ths-erp.com/internal/domain"
@@ -17,7 +15,7 @@ const (
 )
 
 type ICountryService interface {
-	GetAll(ctx context.Context, languageCode string) ([]dto.CountryResponse, error)
+	GetAll(ctx context.Context, languageCode string, pagination *domain.Pagination) ([]dto.CountryResponse, *domain.Pagination, error)
 	GetByCode(ctx context.Context, code string, languageCode string) (*dto.CountryResponse, error)
 	Create(ctx context.Context, req dto.CreateCountryRequest) error
 	Update(ctx context.Context, code string, req dto.UpdateCountryRequest) error
@@ -36,24 +34,22 @@ func NewCountryService(uowFactory IUnitOfWorkFactory, cache cache.ICache) ICount
 	}
 }
 
-func (s *CountryService) GetAll(ctx context.Context, languageCode string) ([]dto.CountryResponse, error) {
-	cacheKey := fmt.Sprintf("%s%s", countriesCacheKeyPrefix, languageCode)
-
-	if cachedData, found := s.cache.Get(cacheKey); found {
-		if data, ok := cachedData.([]byte); ok {
-			var countries []dto.CountryResponse
-			if err := json.Unmarshal(data, &countries); err == nil {
-				return countries, nil
-			}
-		}
-	}
-
+func (s *CountryService) GetAll(ctx context.Context, languageCode string, pagination *domain.Pagination) ([]dto.CountryResponse, *domain.Pagination, error) {
 	uow := s.uowFactory.New(ctx)
 	defer uow.Rollback()
 
-	countries, err := uow.CountryRepository().FindAll(ctx, languageCode)
+	allowedSortBy := map[string]bool{
+		"id":   true,
+		"code": true,
+	}
+	if !allowedSortBy[pagination.SortBy] {
+		pagination.SortBy = "id"
+		pagination.SortOrder = "asc"
+	}
+
+	countries, pagination, err := uow.CountryRepository().FindAll(ctx, languageCode, pagination)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	response := make([]dto.CountryResponse, 0, len(countries))
@@ -68,11 +64,7 @@ func (s *CountryService) GetAll(ctx context.Context, languageCode string) ([]dto
 		})
 	}
 
-	if data, err := json.Marshal(response); err == nil {
-		s.cache.Set(cacheKey, data, countriesCacheDuration)
-	}
-
-	return response, nil
+	return response, pagination, nil
 }
 
 func (s *CountryService) GetByCode(ctx context.Context, code string, languageCode string) (*dto.CountryResponse, error) {

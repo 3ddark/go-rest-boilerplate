@@ -2,6 +2,7 @@ package http
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"ths-erp.com/internal/domain"
 	"ths-erp.com/internal/platform/web"
 	"ths-erp.com/internal/service"
 )
@@ -28,10 +29,18 @@ func NewUnitHandler(unitService service.IUnitService) *UnitHandler {
 func (h *UnitHandler) GetUnits(c *fiber.Ctx) error {
 	languageCode := c.Query("lang", "en") // Default to 'en' if not provided
 
-	units, err := h.unitService.GetAllUnits(c.Context(), languageCode)
+	// Query parametrelerinden sayfalama bilgilerini al
+	pagination := &domain.Pagination{
+		Page:      c.QueryInt("page", 1),
+		PageSize:  c.QueryInt("pageSize", 10),
+		SortBy:    c.Query("sortBy", "id"),
+		SortOrder: c.Query("sortOrder", "asc"),
+	}
+
+	units, pagination, err := h.unitService.GetAllUnits(c.Context(), languageCode, pagination)
 	if err != nil {
 		return web.CustomError(c, fiber.StatusInternalServerError, "Could not retrieve units")
 	}
 
-	return web.Success(c, fiber.StatusOK, units)
+	return web.Paginated(c, units, pagination)
 }

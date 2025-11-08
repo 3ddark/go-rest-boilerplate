@@ -1,5 +1,5 @@
 # Start from the official Golang image to build the application
-FROM golang:1.25.4 as builder
+FROM golang:1.25.2 as builder
 
 # Set the working directory inside the container
 WORKDIR /app
@@ -12,6 +12,9 @@ RUN go mod download
 
 # Copy the source code into the container
 COPY . .
+
+RUN go install github.com/go-delve/delve/cmd/dlv@v1.25.2
+
 
 # Build the application for a specific platform
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/main ./cmd/api

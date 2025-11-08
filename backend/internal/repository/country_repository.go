@@ -8,7 +8,7 @@ import (
 )
 
 type ICountryRepository interface {
-	FindAll(ctx context.Context, languageCode string) ([]domain.Country, error)
+	FindAll(ctx context.Context, languageCode string, pagination *domain.Pagination) ([]domain.Country, *domain.Pagination, error)
 	FindByCode(ctx context.Context, code string, languageCode string) (*domain.Country, error)
 	Create(ctx context.Context, country domain.Country) error
 	Update(ctx context.Context, country domain.Country) error
@@ -24,13 +24,33 @@ func NewCountryRepository(db *gorm.DB) ICountryRepository {
 	return &CountryRepository{db: db}
 }
 
-func (r *CountryRepository) FindAll(ctx context.Context, languageCode string) ([]domain.Country, error) {
+func (r *CountryRepository) FindAll(ctx context.Context, languageCode string, pagination *domain.Pagination) ([]domain.Country, *domain.Pagination, error) {
 	var countries []domain.Country
-	err := r.db.WithContext(ctx).Preload("Translations", "language_code = ?", languageCode).Find(&countries).Error
-	if err != nil {
-		return nil, err
+	var totalRecords int64
+
+	// Toplam kayıt sayısını al
+	if err := r.db.WithContext(ctx).Model(&domain.Country{}).Count(&totalRecords).Error; err != nil {
+		return nil, nil, err
 	}
-	return countries, nil
+
+	pagination.TotalRecords = totalRecords
+	pagination.TotalPages = int(totalRecords) / pagination.GetLimit()
+	if int(totalRecords)%pagination.GetLimit() > 0 {
+		pagination.TotalPages++
+	}
+
+	// Veriyi sayfalama ile al
+	err := r.db.WithContext(ctx).
+		Preload("Translations", "language_code = ?", languageCode).
+		Offset(pagination.GetOffset()).
+		Limit(pagination.GetLimit()).
+		Order(pagination.GetSort()).
+		Find(&countries).Error
+
+	if err != nil {
+		return nil, nil, err
+	}
+	return countries, pagination, nil
 }
 
 func (r *CountryRepository) FindByCode(ctx context.Context, code string, languageCode string) (*domain.Country, error) {

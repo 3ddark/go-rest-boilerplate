@@ -3,11 +3,12 @@ package service
 import (
 	"context"
 
+	"ths-erp.com/internal/domain"
 	"ths-erp.com/internal/dto"
 )
 
 type IUnitService interface {
-	GetAllUnits(ctx context.Context, languageCode string) ([]dto.UnitDTO, error)
+	GetAllUnits(ctx context.Context, languageCode string, pagination *domain.Pagination) ([]dto.UnitDTO, *domain.Pagination, error)
 }
 
 type unitService struct {
@@ -18,13 +19,23 @@ func NewUnitService(uowFactory IUnitOfWorkFactory) IUnitService {
 	return &unitService{uowFactory}
 }
 
-func (s *unitService) GetAllUnits(ctx context.Context, languageCode string) ([]dto.UnitDTO, error) {
+func (s *unitService) GetAllUnits(ctx context.Context, languageCode string, pagination *domain.Pagination) ([]dto.UnitDTO, *domain.Pagination, error) {
 	uow := s.uowFactory.New(ctx)
 	defer uow.Rollback()
 
-	units, err := uow.UnitRepository().FindAll(ctx, languageCode)
+	// SQL Injection'ı önlemek için sıralama kolonunu beyaz listede kontrol et
+	allowedSortBy := map[string]bool{
+		"id":   true,
+		"code": true,
+	}
+	if !allowedSortBy[pagination.SortBy] {
+		pagination.SortBy = "id" // Geçersizse varsayılana dön
+		pagination.SortOrder = "asc"
+	}
+
+	units, pagination, err := uow.UnitRepository().FindAll(ctx, languageCode, pagination)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var unitDTOs []dto.UnitDTO
@@ -41,5 +52,5 @@ func (s *unitService) GetAllUnits(ctx context.Context, languageCode string) ([]d
 		})
 	}
 
-	return unitDTOs, nil
+	return unitDTOs, pagination, nil
 }
