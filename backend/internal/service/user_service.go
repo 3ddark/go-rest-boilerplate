@@ -6,19 +6,20 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"image/png"
 	"log"
 	"strings"
 
+	"github.com/asaskevich/govalidator"
+	"github.com/pquerna/otp/totp"
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
+	"ths-erp.com/internal/apperrors"
 	"ths-erp.com/internal/domain"
 	"ths-erp.com/internal/dto"
 	"ths-erp.com/internal/platform/metrics"
 	"ths-erp.com/internal/platform/queue"
-
-	"github.com/asaskevich/govalidator"
-	"github.com/pquerna/otp/totp"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type WelcomeEmailJob struct {
@@ -61,12 +62,15 @@ func (s *UserService) Authenticate(ctx context.Context, email, password string) 
 	userRepo := uow.UserRepository()
 	user, err := userRepo.FindByEmail(ctx, email)
 	if err != nil {
-		return nil, fmt.Errorf("invalid credentials")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.ErrInvalidCredentials
+		}
+		return nil, err
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
 	if err != nil {
-		return nil, fmt.Errorf("invalid credentials")
+		return nil, apperrors.ErrInvalidCredentials
 	}
 
 	return user, nil
@@ -78,6 +82,9 @@ func (s *UserService) GetUser(ctx context.Context, id int) (*dto.UserResponse, e
 
 	user, err := uow.UserRepository().FindByID(ctx, id)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.ErrNotFound
+		}
 		return nil, err
 	}
 	return s.mapper.ToResponse(user), nil
@@ -104,22 +111,31 @@ func (s *UserService) GetAllUsers(ctx context.Context) ([]dto.UserResponse, erro
 func (s *UserService) CreateUser(ctx context.Context, req *dto.CreateUserRequest) (*dto.UserResponse, error) {
 	if req.Name == "" || req.Email == "" || req.Password == "" {
 		metrics.M.ValidationErrorsTotal.WithLabelValues("user", "missing_fields").Inc()
-		return nil, fmt.Errorf("name, email and password are required")
+		return nil, apperrors.ErrValidation
 	}
 
 	if !govalidator.IsEmail(req.Email) {
 		metrics.M.ValidationErrorsTotal.WithLabelValues("email", "invalid_format").Inc()
-		return nil, fmt.Errorf("invalid email format")
+		return nil, apperrors.ErrValidation
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		log.Printf("Error while hashing password: %v", err)
-		return nil, fmt.Errorf("could not process request")
+		return nil, apperrors.ErrInternalServer
 	}
 
 	uow := s.uowFactory.New(ctx)
 	defer uow.Rollback()
+
+	// Check if email exists
+	_, err = uow.UserRepository().FindByEmail(ctx, req.Email)
+	if err == nil {
+		return nil, apperrors.ErrEmailExists
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err // A different database error occurred
+	}
 
 	user := s.mapper.ToEntity(req)
 	user.PasswordHash = string(hashedPassword)
@@ -156,7 +172,7 @@ func (s *UserService) CreateUser(ctx context.Context, req *dto.CreateUserRequest
 func (s *UserService) UpdateUser(ctx context.Context, id int, req *dto.UpdateUserRequest) (*dto.UserResponse, error) {
 	if req.Email != "" && !govalidator.IsEmail(req.Email) {
 		metrics.M.ValidationErrorsTotal.WithLabelValues("email", "invalid_format").Inc()
-		return nil, fmt.Errorf("invalid email format")
+		return nil, apperrors.ErrValidation
 	}
 
 	uow := s.uowFactory.New(ctx)
@@ -169,6 +185,9 @@ func (s *UserService) UpdateUser(ctx context.Context, id int, req *dto.UpdateUse
 
 	updatedUser, err := uow.UserRepository().Update(ctx, id, updateData)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.ErrNotFound
+		}
 		return nil, err
 	}
 
@@ -183,7 +202,11 @@ func (s *UserService) DeleteUser(ctx context.Context, id int) error {
 	uow := s.uowFactory.New(ctx)
 	defer uow.Rollback()
 
-	if err := uow.UserRepository().Delete(ctx, id); err != nil {
+	err := uow.UserRepository().Delete(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return apperrors.ErrNotFound
+		}
 		return err
 	}
 
@@ -197,6 +220,9 @@ func (s *UserService) Setup2FA(ctx context.Context, userID int) (*dto.Setup2FARe
 	userRepo := uow.UserRepository()
 	user, err := userRepo.FindByID(ctx, userID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.ErrNotFound
+		}
 		return nil, err
 	}
 
@@ -205,21 +231,21 @@ func (s *UserService) Setup2FA(ctx context.Context, userID int) (*dto.Setup2FARe
 		AccountName: user.Email,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("could not generate TOTP key: %w", err)
+		return nil, apperrors.ErrInternalServer
 	}
 
 	user.TwoFactorSecret = key.Secret()
 	if _, err := userRepo.Update(ctx, user.ID, user); err != nil {
-		return nil, fmt.Errorf("could not save TOTP secret: %w", err)
+		return nil, apperrors.ErrInternalServer
 	}
 
 	var buf bytes.Buffer
 	img, err := key.Image(200, 200)
 	if err != nil {
-		return nil, fmt.Errorf("could not generate QR code: %w", err)
+		return nil, apperrors.ErrInternalServer
 	}
 	if err := png.Encode(&buf, img); err != nil {
-		return nil, fmt.Errorf("could not encode QR code: %w", err)
+		return nil, apperrors.ErrInternalServer
 	}
 
 	if err := uow.Commit(); err != nil {
@@ -240,16 +266,19 @@ func (s *UserService) Enable2FA(ctx context.Context, userID int, code string) ([
 	userRepo := uow.UserRepository()
 	user, err := userRepo.FindByID(ctx, userID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.ErrNotFound
+		}
 		return nil, err
 	}
 
 	if user.TwoFactorSecret == "" {
-		return nil, fmt.Errorf("2FA not set up")
+		return nil, apperrors.Err2FASetupNotCompleted
 	}
 
 	valid := totp.Validate(code, user.TwoFactorSecret)
 	if !valid {
-		return nil, fmt.Errorf("invalid TOTP code")
+		return nil, apperrors.ErrInvalid2FACode
 	}
 
 	user.TwoFactorEnabled = true
@@ -258,14 +287,14 @@ func (s *UserService) Enable2FA(ctx context.Context, userID int, code string) ([
 	for i := 0; i < 10; i++ {
 		b := make([]byte, 8)
 		if _, err := rand.Read(b); err != nil {
-			return nil, err
+			return nil, apperrors.ErrInternalServer
 		}
 		recoveryCodes[i] = strings.ToLower(base64.RawURLEncoding.EncodeToString(b))
 	}
 	user.TwoFactorRecoveryCodes = recoveryCodes
 
 	if _, err := userRepo.Update(ctx, user.ID, user); err != nil {
-		return nil, fmt.Errorf("could not enable 2FA: %w", err)
+		return nil, apperrors.ErrInternalServer
 	}
 
 	if err := uow.Commit(); err != nil {
@@ -282,6 +311,9 @@ func (s *UserService) Disable2FA(ctx context.Context, userID int) error {
 	userRepo := uow.UserRepository()
 	user, err := userRepo.FindByID(ctx, userID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return apperrors.ErrNotFound
+		}
 		return err
 	}
 
@@ -290,7 +322,7 @@ func (s *UserService) Disable2FA(ctx context.Context, userID int) error {
 	user.TwoFactorRecoveryCodes = nil
 
 	if _, err := userRepo.Update(ctx, user.ID, user); err != nil {
-		return fmt.Errorf("could not disable 2FA: %w", err)
+		return apperrors.ErrInternalServer
 	}
 
 	return uow.Commit()
@@ -303,6 +335,9 @@ func (s *UserService) Verify2FA(ctx context.Context, userID int, code string) (b
 	userRepo := uow.UserRepository()
 	user, err := userRepo.FindByID(ctx, userID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, apperrors.ErrNotFound
+		}
 		return false, err
 	}
 
@@ -310,8 +345,7 @@ func (s *UserService) Verify2FA(ctx context.Context, userID int, code string) (b
 		return true, nil
 	}
 
-	valid := totp.Validate(code, user.TwoFactorSecret)
-	if valid {
+	if totp.Validate(code, user.TwoFactorSecret) {
 		return true, nil
 	}
 
@@ -319,7 +353,7 @@ func (s *UserService) Verify2FA(ctx context.Context, userID int, code string) (b
 		if code == recoveryCode {
 			user.TwoFactorRecoveryCodes = append(user.TwoFactorRecoveryCodes[:i], user.TwoFactorRecoveryCodes[i+1:]...)
 			if _, err := userRepo.Update(ctx, user.ID, user); err != nil {
-				return false, fmt.Errorf("could not update recovery codes: %w", err)
+				return false, apperrors.ErrInternalServer
 			}
 			if err := uow.Commit(); err != nil {
 				return false, err
@@ -328,5 +362,5 @@ func (s *UserService) Verify2FA(ctx context.Context, userID int, code string) (b
 		}
 	}
 
-	return false, nil
+	return false, apperrors.ErrInvalid2FACode
 }

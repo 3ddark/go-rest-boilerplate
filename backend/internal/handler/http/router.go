@@ -1,26 +1,25 @@
 package http
 
 import (
-	"time"
-
-	"ths-erp.com/internal/handler/http/middleware"
-	"ths-erp.com/internal/platform/cache"
-	"ths-erp.com/internal/platform/queue"
-	"ths-erp.com/internal/service"
-
+	"github.com/go-redis/redis/v8"
 	"github.com/gofiber/adaptor/v2"
 	"github.com/gofiber/fiber/v2"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gorm.io/gorm"
+	"ths-erp.com/internal/handler/http/middleware"
+	"ths-erp.com/internal/platform/cache"
+	"ths-erp.com/internal/platform/queue"
+	"ths-erp.com/internal/service"
 )
 
-func SetupRoutes(app *fiber.App, db *gorm.DB, permService service.IPermissionService, queueClient *queue.RabbitMQClient) {
+func SetupRoutes(app *fiber.App, db *gorm.DB, permService service.IPermissionService, queueClient *queue.RabbitMQClient, redisClient *redis.Client) {
 	uowFactory := service.NewUnitOfWorkFactory(db)
+	appCache := cache.NewRedisCache(redisClient)
 
 	// Initialize services
 	userService := service.NewUserService(uowFactory, &service.UserMapper{}, queueClient)
-	countryService := service.NewCountryService(uowFactory, cache.NewInMemoryCache(24*time.Hour))
-	languageService := service.NewLanguageService(uowFactory, cache.NewInMemoryCache(24*time.Hour))
+	countryService := service.NewCountryService(uowFactory, appCache)
+	languageService := service.NewLanguageService(uowFactory, appCache)
 	unitService := service.NewUnitService(uowFactory)
 	reportService := service.NewReportService(uowFactory, queueClient)
 

@@ -17,27 +17,17 @@ func PermissionMiddleware(permService service.IPermissionService, resource, acti
 
 		user, ok := c.Locals("user").(*auth.AuthUser)
 		if !ok || user == nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(web.ApiResponse{
-				Success: false, Message: "Unauthorized",
-			})
+			return web.Unauthorized(c)
 		}
 
 		allowed, err := permService.CheckPermission(c.Context(), user.UserID, resource, action)
 		if err != nil {
 			log.Printf("Permission check error: %v", err)
-			return c.Status(fiber.StatusInternalServerError).JSON(web.ApiResponse{
-				Success: false,
-				Message: i18n.Get(lang, "database_error"),
-				Error:   &web.AppError{Code: "DATABASE_ERROR", Status: 500},
-			})
+			return web.CustomError(c, fiber.StatusInternalServerError, i18n.Get(lang, "database_error"))
 		}
 
 		if !allowed {
-			return c.Status(fiber.StatusForbidden).JSON(web.ApiResponse{
-				Success: false,
-				Message: i18n.Get(lang, "permission_denied"),
-				Error:   &web.AppError{Code: "PERMISSION_DENIED", Status: 403},
-			})
+			return web.Forbidden(c, i18n.Get(lang, "permission_denied"))
 		}
 
 		return c.Next()

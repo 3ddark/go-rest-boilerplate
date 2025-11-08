@@ -8,6 +8,7 @@ import (
 	"ths-erp.com/internal/config"
 	"ths-erp.com/internal/handler/graphql"
 	"ths-erp.com/internal/handler/http"
+	"ths-erp.com/internal/platform/cache"
 	"ths-erp.com/internal/platform/database"
 	"ths-erp.com/internal/platform/database/migration"
 	"ths-erp.com/internal/platform/i18n"
@@ -61,11 +62,15 @@ func main() {
 		log.Fatalf("Could not declare queue/exchange: %v", err)
 	}
 
+	// Connect to Redis
+	redisClient, err := cache.NewRedisClient(cfg)
+	if err != nil {
+		log.Fatalf("Could not connect to Redis: %v", err)
+	}
+	log.Println("✓ Redis connected")
+
 	// Mappers
 	userMapper := service.NewUserMapper()
-
-	// Cache
-	// appCache := cache.NewInMemoryCache(5 * time.Minute)
 
 	// Unit of Work Factory
 	uowFactory := service.NewUnitOfWorkFactory(db)
@@ -84,7 +89,7 @@ func main() {
 	}))
 
 	// Routes
-	http.SetupRoutes(app, db, permService, rabbitClient)
+	http.SetupRoutes(app, db, permService, rabbitClient, redisClient)
 	graphql.SetupHandler(app, userService, permService)
 
 	// Start server

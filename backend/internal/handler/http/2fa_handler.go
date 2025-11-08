@@ -23,25 +23,15 @@ func (h *UserHandler) Setup2FA(c *fiber.Ctx) error {
 
 	user, err := auth.GetUserFromContext(c.UserContext())
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(web.ApiResponse{
-			Success: false,
-			Message: "Unauthorized",
-		})
+		return web.Unauthorized(c)
 	}
 
 	resp, err := h.userService.Setup2FA(ctx, user.UserID)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(web.ApiResponse{
-			Success: false,
-			Message: "Could not setup 2FA",
-		})
+		return web.CustomError(c, fiber.StatusInternalServerError, "Could not setup 2FA")
 	}
 
-	return c.Status(fiber.StatusOK).JSON(web.ApiResponse{
-		Success: true,
-		Message: "2FA setup initiated",
-		Data:    resp,
-	})
+	return web.Success(c, fiber.StatusOK, resp, "2FA setup initiated")
 }
 
 func (h *UserHandler) Enable2FA(c *fiber.Ctx) error {
@@ -50,33 +40,20 @@ func (h *UserHandler) Enable2FA(c *fiber.Ctx) error {
 
 	user, err := auth.GetUserFromContext(c.UserContext())
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(web.ApiResponse{
-			Success: false,
-			Message: "Unauthorized",
-		})
+		return web.Unauthorized(c)
 	}
 
 	var req dto.Enable2FARequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(web.ApiResponse{
-			Success: false,
-			Message: "Invalid request",
-		})
+		return web.CustomError(c, fiber.StatusBadRequest, "Invalid request")
 	}
 
 	recoveryCodes, err := h.userService.Enable2FA(ctx, user.UserID, req.Code)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(web.ApiResponse{
-			Success: false,
-			Message: err.Error(),
-		})
+		return web.CustomError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	return c.Status(fiber.StatusOK).JSON(web.ApiResponse{
-		Success: true,
-		Message: "2FA enabled successfully",
-		Data:    recoveryCodes,
-	})
+	return web.Success(c, fiber.StatusOK, recoveryCodes, "2FA enabled successfully")
 }
 
 func (h *UserHandler) Disable2FA(c *fiber.Ctx) error {
@@ -85,21 +62,12 @@ func (h *UserHandler) Disable2FA(c *fiber.Ctx) error {
 
 	user, err := auth.GetUserFromContext(c.UserContext())
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(web.ApiResponse{
-			Success: false,
-			Message: "Unauthorized",
-		})
+		return web.Unauthorized(c)
 	}
 
 	if err := h.userService.Disable2FA(ctx, user.UserID); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(web.ApiResponse{
-			Success: false,
-			Message: "Could not disable 2FA",
-		})
+		return web.CustomError(c, fiber.StatusInternalServerError, "Could not disable 2FA")
 	}
 
-	return c.Status(fiber.StatusOK).JSON(web.ApiResponse{
-		Success: true,
-		Message: "2FA disabled successfully",
-	})
+	return web.Success(c, fiber.StatusOK, nil, "2FA disabled successfully")
 }

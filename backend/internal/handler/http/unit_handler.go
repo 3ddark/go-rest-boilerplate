@@ -2,6 +2,7 @@ package http
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"ths-erp.com/internal/platform/web"
 	"ths-erp.com/internal/service"
 )
 
@@ -22,17 +23,15 @@ func NewUnitHandler(unitService service.IUnitService) *UnitHandler {
 // @Accept  json
 // @Produce  json
 // @Param lang query string false "Language code for translations (e.g., en, tr)" default(en)
-// @Success 200 {array} dto.UnitDTO
+// @Success 200 {object} web.Response
 // @Router /units [get]
 func (h *UnitHandler) GetUnits(c *fiber.Ctx) error {
 	languageCode := c.Query("lang", "en") // Default to 'en' if not provided
 
 	units, err := h.unitService.GetAllUnits(c.Context(), languageCode)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Could not retrieve units",
-		})
+		return web.CustomError(c, fiber.StatusInternalServerError, "Could not retrieve units")
 	}
 
-	return c.JSON(units)
+	return web.Success(c, fiber.StatusOK, units)
 }

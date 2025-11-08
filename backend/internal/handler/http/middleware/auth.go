@@ -13,18 +13,12 @@ import (
 func AuthMiddleware(c *fiber.Ctx) error {
 	authHeader := c.Get("Authorization")
 	if authHeader == "" {
-		return c.Status(fiber.StatusUnauthorized).JSON(web.ApiResponse{
-			Success: false,
-			Message: "Authorization header is missing",
-		})
+		return web.Unauthorized(c, "Authorization header is missing")
 	}
 
 	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 	if tokenString == authHeader {
-		return c.Status(fiber.StatusUnauthorized).JSON(web.ApiResponse{
-			Success: false,
-			Message: "Invalid authorization header format",
-		})
+		return web.Unauthorized(c, "Invalid authorization header format")
 	}
 
 	token, err := jwt.ParseWithClaims(tokenString, &auth.JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
@@ -32,18 +26,12 @@ func AuthMiddleware(c *fiber.Ctx) error {
 	})
 
 	if err != nil || !token.Valid {
-		return c.Status(fiber.StatusUnauthorized).JSON(web.ApiResponse{
-			Success: false,
-			Message: "Invalid or expired token",
-		})
+		return web.Unauthorized(c, "Invalid or expired token")
 	}
 
 	claims, ok := token.Claims.(*auth.JWTClaims)
 	if !ok {
-		return c.Status(fiber.StatusUnauthorized).JSON(web.ApiResponse{
-			Success: false,
-			Message: "Invalid token claims",
-		})
+		return web.Unauthorized(c, "Invalid token claims")
 	}
 
 	c.Locals("user", &auth.AuthUser{

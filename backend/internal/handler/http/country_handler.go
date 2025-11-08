@@ -5,6 +5,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"ths-erp.com/internal/dto"
+	"ths-erp.com/internal/platform/web"
 	"ths-erp.com/internal/service"
 )
 
@@ -29,12 +30,10 @@ func (h *CountryHandler) GetAll(c *fiber.Ctx) error {
 
 	countries, err := h.countryService.GetAll(c.Context(), lang)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return web.CustomError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(countries)
+	return web.Success(c, fiber.StatusOK, countries)
 }
 
 // GetByCode handles the GET /api/v1/countries/:code request.
@@ -44,30 +43,28 @@ func (h *CountryHandler) GetByCode(c *fiber.Ctx) error {
 
 	country, err := h.countryService.GetByCode(c.Context(), code, lang)
 	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Country not found",
-		})
+		return web.NotFound(c, "Country not found")
 	}
 
-	return c.JSON(country)
+	return web.Success(c, fiber.StatusOK, country)
 }
 
 // Create handles the POST /api/v1/countries request.
 func (h *CountryHandler) Create(c *fiber.Ctx) error {
 	var req dto.CreateCountryRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
+		return web.CustomError(c, fiber.StatusBadRequest, "Invalid request")
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return web.ValidationError(c, err)
 	}
 
 	if err := h.countryService.Create(c.Context(), req); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return web.CustomError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "Country created successfully"})
+	return web.Success(c, fiber.StatusCreated, nil, "Country created successfully")
 }
 
 // Update handles the PUT /api/v1/countries/:code request.
@@ -75,27 +72,27 @@ func (h *CountryHandler) Update(c *fiber.Ctx) error {
 	code := c.Params("code")
 	var req dto.UpdateCountryRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
+		return web.CustomError(c, fiber.StatusBadRequest, "Invalid request")
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return web.ValidationError(c, err)
 	}
 
 	if err := h.countryService.Update(c.Context(), code, req); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return web.CustomError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(fiber.Map{"message": "Country updated successfully"})
+	return web.Success(c, fiber.StatusOK, nil, "Country updated successfully")
 }
 
 // Delete handles the DELETE /api/v1/countries/:code request.
 func (h *CountryHandler) Delete(c *fiber.Ctx) error {
 	code := c.Params("code")
 	if err := h.countryService.Delete(c.Context(), code); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return web.CustomError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
-	return c.Status(fiber.StatusNoContent).JSON(fiber.Map{"message": "Country deleted successfully"})
+	return web.Success(c, fiber.StatusNoContent, nil, "Country deleted successfully")
 }
 

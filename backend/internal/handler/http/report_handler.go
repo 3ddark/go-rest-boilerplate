@@ -27,20 +27,16 @@ func (h *ReportHandler) RequestReport(c *fiber.Ctx) error {
 	// Basit bir DTO yerine şimdilik map kullanıyoruz
 	var reqBody map[string]interface{}
 	if err := c.BodyParser(&reqBody); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(web.ApiResponse{Success: false, Message: i18n.Get(lang, "invalid_request")})
+		return web.CustomError(c, fiber.StatusBadRequest, i18n.Get(lang, "invalid_request"))
 	}
 
 	reportType := "monthly_user_registrations" // Bu normalde request'ten gelir
 	report, err := h.reportService.RequestReport(ctx, reportType, reqBody)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(web.ApiResponse{Success: false, Message: i18n.Get(lang, "database_error")})
+		return web.CustomError(c, fiber.StatusInternalServerError, i18n.Get(lang, "database_error"))
 	}
 
-	return c.Status(fiber.StatusAccepted).JSON(web.ApiResponse{
-		Success: true,
-		Message: "Report generation started",
-		Data:    report,
-	})
+	return web.Success(c, fiber.StatusAccepted, report, "Report generation started")
 }
 
 func (h *ReportHandler) GetReport(c *fiber.Ctx) error {
@@ -51,13 +47,13 @@ func (h *ReportHandler) GetReport(c *fiber.Ctx) error {
 
 	id, err := c.ParamsInt("id")
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(web.ApiResponse{Success: false, Message: i18n.Get(lang, "invalid_request")})
+		return web.CustomError(c, fiber.StatusBadRequest, i18n.Get(lang, "invalid_request"))
 	}
 
 	report, err := h.reportService.GetReportStatus(ctx, id)
 	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(web.ApiResponse{Success: false, Message: i18n.Get(lang, "report_not_found")})
+		return web.NotFound(c, i18n.Get(lang, "report_not_found"))
 	}
 
-	return c.Status(fiber.StatusOK).JSON(web.ApiResponse{Success: true, Data: report})
+	return web.Success(c, fiber.StatusOK, report)
 }

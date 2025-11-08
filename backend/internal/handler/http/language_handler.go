@@ -2,6 +2,7 @@ package http
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"ths-erp.com/internal/platform/web"
 	"ths-erp.com/internal/service"
 )
 
@@ -22,10 +23,8 @@ func (h *LanguageHandler) GetAll(c *fiber.Ctx) error {
 
 	languages, err := h.languageService.GetActiveLanguages(c.Context(), lang)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return web.CustomError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(languages)
+	return web.Success(c, fiber.StatusOK, languages)
 }
