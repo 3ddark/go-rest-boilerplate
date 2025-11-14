@@ -3,11 +3,13 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
 	"ths-erp.com/internal/auth"
 	"ths-erp.com/internal/config"
 	"ths-erp.com/internal/handler/graphql"
 	"ths-erp.com/internal/handler/http"
+	"ths-erp.com/internal/handler/http/middleware"
 	"ths-erp.com/internal/platform/cache"
 	"ths-erp.com/internal/platform/database"
 	"ths-erp.com/internal/platform/database/migration"
@@ -80,7 +82,14 @@ func main() {
 	userService := service.NewUserService(uowFactory, userMapper, rabbitClient)
 
 	// Setup server
-	app := fiber.New()
+	app := fiber.New(
+		fiber.Config{
+			IdleTimeout:  5 * time.Second,
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 10 * time.Second,
+			Concurrency:  256 * 1024,
+		},
+	)
 
 	app.Use(recover.New())
 	app.Use(cors.New(cors.Config{
